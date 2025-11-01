@@ -32,3 +32,23 @@ jobs:
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: ${{ env.TF_VERSION }}
+
+      - name: terraform init
+        run: |
+          cd terraform
+          terraform init
+
+      - name: terraform validate
+        run: |
+          cd terraform
+          terraform validate
+
+      - name: terraform plan
+        run: |
+          cd terraform
+          terraform plan -out=tfplan
+
+      - name: terraform apply
+        run: |
+          cd terraform
+          terraform apply -auto-approve tfplan
