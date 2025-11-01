@@ -14,6 +14,8 @@ env:
   ECS_SERVICE: ecs-bg-deploy-service
   ECS_CLUSTER: ecs-bg-deploy-cluster
   CONTAINER_NAME: ecs-bg-deploy-container
+  CODEDEPLOY_APPLICATION: ecs-bg-deploy-app
+  CODEDEPLOY_DEPLOYMENT_GROUP: ecs-bg-deploy-deployment-group
 
 jobs:
   deploy:
@@ -68,3 +70,33 @@ jobs:
             --query 'taskDefinition.taskDefinitionArn' \
             --output text)
           echo "task-def-arn=$TASK_DEF_ARN" >> $GITHUB_OUTPUT
+
+      - name: create appspec file for codedeploy
+        run: |
+          cat > appspec.json <<EOF
+          {
+            "version": 0.0,
+            "Resources": [
+              {
+                "TargetService": {
+                  "Type": "AWS::ECS::Service",
+                  "Properties": {
+                    "TaskDefinition": "${{ steps.register-task-def.outputs.task-def-arn }}",
+                    "LoadBalancerInfo": {
+                      "ContainerName": "${{ env.CONTAINER_NAME }}",
+                      "ContainerPort": 3000
+                    }
+                  }
+                }
+              }
+            ]
+          }
+          EOF
+
+      - name: deploy via codedeploy
+        run: |
+          aws deploy create-deployment \
+            --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
+            --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
+            --revision revisionType=AppSpecContent,appSpecContent={content="$(cat appspec.json)"} \
+            --description "deployment from github actions - commit ${{ github.sha }}"
