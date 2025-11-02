@@ -55,8 +55,10 @@ the original assignment required blue/green deployments using aws codedeploy. ho
 
 to see the deployment process in action:
 
-1. make a visible change to the application (e.g., update version from "1.0.0" to "1.0.1")
-2. rebuild docker image with `--platform linux/amd64` and push to ecr
-3. trigger deployment: `aws ecs update-service --cluster ecs-bg-deploy-cluster --service ecs-bg-deploy-service --force-new-deployment --region us-west-2`
-4. monitor progress and get task ips to test endpoints
+1. make a visible change to the application (e.g., update version from "1.0.0" to "1.0.1" in `app/index.js`)
+2. commit and push changes to master branch
+3. github actions will automatically build, push to ecr, and deploy to ecs
+4. monitor deployment progress and get task ips to test endpoints
 5. during the transition, both old and new versions respond simultaneously as ecs gradually drains old tasks and brings up new ones
+
+the github actions workflow (`.github/workflows/deploy.yml`) automatically triggers on changes to `app/**` and handles the entire deployment pipeline.
