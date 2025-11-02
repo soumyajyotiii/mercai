@@ -51,7 +51,7 @@ to see the deployment process in action, start by making a visible change to the
 
 the workflow builds the docker image with the correct platform architecture (linux/amd64 for ecs fargate), pushes it to ecr, and triggers an ecs service update. during the deployment transition, you can query the running tasks and observe both old and new versions responding simultaneously. as ecs gradually drains the old tasks and brings up new ones, the traffic shifts smoothly without any downtime.
 
-the entire pipeline is automated through the `.github/workflows/deploy.yml` workflow, which triggers automatically on changes to the `app/**` directory.
+the entire pipeline is automated through the `.github/workflows/deploy.yml` workflow, which triggers automatically on changes to the `app/**` directory. once the deployment completes successfully, the workflow automatically fetches and displays the public ips of all running tasks, giving you immediate access to the application endpoints for testing without needing to manually query aws.
 
 ## infrastructure changes
 
