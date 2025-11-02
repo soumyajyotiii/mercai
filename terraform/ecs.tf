@@ -76,14 +76,8 @@ resource "aws_ecs_service" "app" {
 
   network_configuration {
     security_groups  = [aws_security_group.ecs_tasks.id]
-    subnets          = aws_subnet.private[*].id
-    assign_public_ip = false
-  }
-
-  load_balancer {
-    target_group_arn = aws_lb_target_group.main.arn
-    container_name   = "${var.project_name}-container"
-    container_port   = var.container_port
+    subnets          = aws_subnet.public[*].id
+    assign_public_ip = true
   }
 
   lifecycle {
@@ -91,7 +85,6 @@ resource "aws_ecs_service" "app" {
   }
 
   depends_on = [
-    aws_lb_listener.main,
     aws_iam_role_policy_attachment.ecs_task_execution_role_policy
   ]
 
