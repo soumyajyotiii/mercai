@@ -40,3 +40,23 @@ given the account restrictions and timeline constraints:
    - security groups control access
 
 codedeploy configuration preserved in `terraform/codedeploy.tf.disabled` for future use once account restrictions are lifted.
+
+## observing deployments
+
+### original requirement vs implementation
+
+the original assignment required blue/green deployments using aws codedeploy. however, due to the codedeploy service restriction on the aws starter account, this couldn't be implemented. instead, ecs rolling updates were used as an alternative that still achieves zero-downtime deployments.
+
+**key differences:**
+- **blue/green**: maintains two complete environments, switches traffic instantly between them
+- **rolling updates**: gradually replaces old tasks with new ones while maintaining minimum healthy count
+
+### how to observe rolling deployment behavior
+
+to see the deployment process in action:
+
+1. make a visible change to the application (e.g., update version from "1.0.0" to "1.0.1")
+2. rebuild docker image with `--platform linux/amd64` and push to ecr
+3. trigger deployment: `aws ecs update-service --cluster ecs-bg-deploy-cluster --service ecs-bg-deploy-service --force-new-deployment --region us-west-2`
+4. monitor progress and get task ips to test endpoints
+5. during the transition, both old and new versions respond simultaneously as ecs gradually drains old tasks and brings up new ones
