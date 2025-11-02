@@ -49,7 +49,7 @@ variable "fargate_cpu" {
 variable "fargate_memory" {
   description = "fargate instance memory"
   type        = string
-  default     = "1024"
+  default     = "512"
 }
 
 variable "app_image" {
