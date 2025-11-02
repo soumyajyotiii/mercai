@@ -80,10 +80,6 @@ resource "aws_ecs_service" "app" {
     assign_public_ip = true
   }
 
-  lifecycle {
-    ignore_changes = [task_definition]
-  }
-
   depends_on = [
     aws_iam_role_policy_attachment.ecs_task_execution_role_policy
   ]
