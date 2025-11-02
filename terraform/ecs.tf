@@ -81,17 +81,13 @@ resource "aws_ecs_service" "app" {
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.blue.arn
+    target_group_arn = aws_lb_target_group.main.arn
     container_name   = "${var.project_name}-container"
     container_port   = var.container_port
   }
 
-  deployment_controller {
-    type = "CODE_DEPLOY"
-  }
-
   lifecycle {
-    ignore_changes = [task_definition, load_balancer]
+    ignore_changes = [task_definition]
   }
 
   depends_on = [

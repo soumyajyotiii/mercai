@@ -17,13 +17,3 @@ output "ecs_service_name" {
   description = "name of the ecs service"
   value       = aws_ecs_service.app.name
 }
-
-output "codedeploy_app_name" {
-  description = "name of the codedeploy application"
-  value       = aws_codedeploy_app.main.name
-}
-
-output "codedeploy_deployment_group_name" {
-  description = "name of the codedeploy deployment group"
-  value       = aws_codedeploy_deployment_group.main.deployment_group_name
-}

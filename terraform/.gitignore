@@ -1,0 +1,8 @@
+# terraform/opentofu files
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+*.tfplan
+.terraformrc
+terraform.rc
