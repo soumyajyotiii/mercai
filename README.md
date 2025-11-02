@@ -55,64 +55,9 @@ the entire pipeline is automated through the `.github/workflows/deploy.yml` work
 
 ## zero-downtime infrastructure upgrades
 
-one of the key requirements is the ability to perform zero-downtime infrastructure upgrades when changing underlying resources like cpu allocation, memory, environment variables, or other task configuration parameters. this is fully supported through terraform and github actions with no manual intervention required.
+zero-downtime infrastructure upgrades are supported when changing underlying resources like cpu allocation, memory, environment variables, or task configuration. when terraform variables are updated (e.g., changing `fargate_cpu` from "256" to "512"), the infrastructure workflow applies changes via github actions. terraform creates a new task definition revision, and ecs automatically performs rolling updates: starting new tasks with updated parameters, waiting for health checks, then draining old tasks while maintaining at least one running task throughout.
 
-### how infrastructure upgrades work
-
-when you modify infrastructure parameters in terraform (such as fargate cpu or memory allocation), the system automatically handles the upgrade with zero downtime through ecs rolling updates. here's what happens:
-
-1. terraform creates a new task definition revision with the updated parameters
-2. ecs service detects the new task definition and initiates a rolling deployment
-3. new tasks start with the updated configuration
-4. ecs waits for new tasks to pass health checks and become healthy
-5. old tasks are gradually drained and stopped
-6. throughout the process, at least one task remains running to serve traffic
-
-this ensures continuous availability while the infrastructure is being upgraded.
-
-### example: upgrading cpu and memory
-
-to demonstrate zero-downtime infrastructure upgrade, let's say you need to increase the task resources from 256 cpu units and 512 mb memory to 512 cpu units and 1024 mb memory:
-
-**step 1: update terraform variables**
-```hcl
-# in terraform/variables.tf or via terraform.tfvars
-fargate_cpu    = "512"   # changed from "256"
-fargate_memory = "1024"  # changed from "512"
-```
-
-**step 2: commit and push changes**
-```bash
-git add terraform/variables.tf
-git commit -m "upgrade ecs task resources to 512 cpu and 1024mb memory"
-git push origin master
-```
-
-**step 3: review and apply via github actions**
-- github actions automatically runs `tofu plan` when terraform changes are pushed
-- review the plan output to verify the changes
-- manually trigger the "apply" action via workflow dispatch
-- ecs automatically performs a rolling update with zero downtime
-
-during the upgrade, you can monitor the deployment and observe both old and new task specifications running simultaneously until the rollout completes. this same process works for any infrastructure change: environment variables, container port, log retention, vpc configuration, security group rules, etc.
-
-### infrastructure vs application deployments
-
-it's important to distinguish between two types of deployments:
-
-**application deployments** (handled by deploy workflow):
-- trigger: changes to `app/**` directory
-- updates: container image with new application code
-- process: build image → push to ecr → deploy to ecs
-- frequency: multiple times per day as code changes
-
-**infrastructure deployments** (handled by infrastructure workflow):
-- trigger: changes to `terraform/**` directory
-- updates: cpu, memory, networking, environment variables, task configuration
-- process: terraform plan → manual approval → terraform apply → ecs rolling update
-- frequency: less frequent, typically for capacity or configuration changes
-
-both use ecs rolling updates to ensure zero downtime, but they update different aspects of the system.
+**code change to enable this:** removed the `lifecycle { ignore_changes = [task_definition] }` block from `terraform/ecs.tf` that was previously preventing terraform from updating the service when infrastructure parameters changed. now terraform can create new task definition revisions and trigger ecs rolling deployments for infrastructure changes.
 
 ## infrastructure changes
 
