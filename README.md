@@ -68,3 +68,19 @@ to actually apply infrastructure changes, navigate to github actions and find th
 this two-step approach prevents accidental infrastructure destruction, avoids state locking conflicts between local and ci/cd runs, and ensures all changes go through a review step before being applied.
 
 **note:** if you need to run terraform locally, ensure no github actions workflows are running to avoid state lock conflicts. if you encounter lock errors, check the dynamodb table `ecs-bg-deploy-tfstate-lock` and remove stale locks if necessary.
+
+## production considerations
+
+due to aws starter account restrictions, several best practices were omitted that **would be mandatory in a production environment**:
+
+**load balancer and service discovery:** the current implementation exposes ecs tasks directly via public ips. in production, an application load balancer would be essential for proper traffic distribution, health checking, ssl/tls termination, and providing a stable endpoint as tasks are replaced during deployments. service discovery through aws cloud map or route53 would also be implemented for internal service-to-service communication.
+
+**network architecture:** because the load balancer restriction prevented proper alb setup, tasks had to be deployed in public subnets with directly assigned public ips. production deployments should never do this. instead, tasks should be placed in private subnets with traffic routed through a load balancer in public subnets. this reduces the attack surface and follows the principle of defense in depth. nat gateways would handle outbound internet access for private tasks.
+
+**security group hardening:** again, due to the lack of a load balancer, security groups currently allow inbound traffic from 0.0.0.0/0 directly to the container port. in production, only the load balancer security group should accept internet traffic, and task security groups should only allow traffic from the load balancer security group, not the entire internet.
+
+**deployment strategy:** while ecs rolling updates provide zero-downtime deployments, production systems benefit from true blue/green deployments with codedeploy for instant rollback capability, traffic shifting controls, and canary deployments. this is especially important for critical applications where gradual rollouts and quick rollbacks are essential.
+
+**monitoring and observability:** production deployments would include comprehensive cloudwatch alarms for task health, cpu/memory utilization, deployment failures, and application-specific metrics. aws x-ray for distributed tracing, enhanced container insights, and integration with centralized logging solutions would also be standard.
+
+these shortcuts were taken purely due to account service restrictions and timeline constraints. **in a production environment with a standard aws account, none of these compromises would be acceptable.**
