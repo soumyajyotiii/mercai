@@ -1,92 +1,90 @@
 # ecs deployment pipeline with infrastructure as code
 
-## problems encountered
+## problems i ran into
 
 ### 1. codedeploy service restriction
 
-**error:**
+so the first major blocker i hit was with codedeploy. i got this error when trying to set up the blue/green deployment:
+
 ```
 Error: creating CodeDeploy Application (ecs-bg-deploy-app):
 SubscriptionRequiredException: The AWS Access Key Id needs a subscription for the service
 ```
 
-aws starter account requires up to 24 hours for codedeploy service activation. while codedeploy is free for ecs deployments, new accounts face activation timing restrictions that prevented immediate implementation.
+turns out my aws starter account needed up to 24 hours for codedeploy service activation. codedeploy is actually free for ecs deployments, but there's this account activation timing thing that blocked me from using it immediately.
 
-**sources:**
+did some research on this:
 - https://aws.amazon.com/codedeploy/pricing/
 - https://repost.aws/knowledge-center/create-and-activate-aws-account
 
-### 2. elastic load balancer restriction
+### 2. load balancer restriction
 
-**error:**
+then i ran into another wall trying to create the application load balancer:
+
 ```
 Error: creating ELBv2 application Load Balancer (ecs-bg-deploy-alb):
 OperationNotPermitted: This AWS account currently does not support creating load balancers.
 For more information, please contact AWS Support.
 ```
 
-aws starter account has service-level restrictions on creating load balancers requiring aws support intervention.
+my aws starter account has restrictions on creating load balancers that require aws support to lift. given the timeline, i couldn't wait for that.
 
-## alternative approach taken
+## what i did instead
 
-given the account restrictions and timeline constraints, two key architectural changes were made to maintain the core requirement of zero-downtime deployments.
+with both codedeploy and the load balancer blocked, i had to pivot while still meeting the core requirement of zero-downtime deployments.
 
-instead of codedeploy blue/green deployments, the implementation uses ecs native rolling updates. this approach still achieves zero-downtime by gradually replacing old tasks with new ones while maintaining minimum healthy task counts. the native ecs deployment controller handles the orchestration without requiring additional services.
+**for deployments:** instead of codedeploy blue/green, i went with ecs native rolling updates. it still gives me zero-downtime by gradually replacing old tasks with new ones while keeping the minimum healthy task count. the native ecs deployment controller handles everything without needing codedeploy.
 
-the load balancer was replaced with ecs tasks deployed in public subnets with directly assigned public ips. security groups control inbound access to the tasks, maintaining security while simplifying the architecture. this works well for the demonstration purpose though a production system would typically use a load balancer for traffic distribution and health checking.
+**for networking:** i replaced the load balancer with ecs tasks in public subnets that get public ips assigned directly. security groups control who can access them. this works fine for a demo, though i'd definitely use a proper load balancer in production for traffic distribution and health checking.
 
-the original codedeploy configuration has been preserved in `terraform/codedeploy.tf.disabled` for future use once account restrictions are lifted.
+i kept the original codedeploy configuration in `terraform/codedeploy.tf.disabled` so i can enable it once the account restrictions are lifted.
 
-## observing deployments
+## how deployments work
 
-### original requirement vs implementation
+### what the assignment wanted vs what i built
 
-the original assignment required blue/green deployments using aws codedeploy. however, due to the codedeploy service restriction on the aws starter account, this couldn't be implemented. instead, ecs rolling updates were used as an alternative that still achieves zero-downtime deployments.
+the assignment asked for blue/green deployments with codedeploy. because of the account restriction i mentioned above, i couldn't do that. so i used ecs rolling updates instead, which still achieves zero-downtime.
 
-the key difference is that blue/green deployments maintain two complete environments and switch traffic instantly between them, while rolling updates gradually replace old tasks with new ones while maintaining minimum healthy count. both approaches achieve zero downtime, but the transition mechanism differs.
+the main difference: blue/green maintains two complete environments and switches traffic instantly, while rolling updates gradually replace old tasks with new ones. both avoid downtime, just different mechanisms.
 
-### how to observe rolling deployment behavior
+### seeing it in action
 
-to see the deployment process in action, start by making a visible change to the application code. for example, update the version from "1.0.0" to "1.0.1" in `app/index.js` or modify the response message. once you commit and push these changes to the master branch, the github actions workflow automatically handles the rest.
+if you want to see the deployment process, just make a visible change to the app. like change the version from "1.0.0" to "1.0.1" in `app/index.js` or tweak the response message. commit and push to master, and github actions takes over from there.
 
-the workflow builds the docker image with the correct platform architecture (linux/amd64 for ecs fargate), pushes it to ecr, and triggers an ecs service update. during the deployment transition, you can query the running tasks and observe both old and new versions responding simultaneously. as ecs gradually drains the old tasks and brings up new ones, the traffic shifts smoothly without any downtime.
+the workflow builds the docker image (with the right platform - linux/amd64 for ecs fargate), pushes it to ecr, and updates the ecs service. during the transition, you can hit the running tasks and see both old and new versions responding at the same time. ecs gradually drains the old tasks as the new ones come up.
 
-the entire pipeline is automated through the `.github/workflows/deploy.yml` workflow, which triggers automatically on changes to the `app/**` directory. once the deployment completes successfully, the workflow automatically fetches and displays the public ips of all running tasks, giving you immediate access to the application endpoints for testing without needing to manually query aws.
+the whole thing runs through `.github/workflows/deploy.yml` which triggers on changes to the `app/**` directory. once deployment finishes, the workflow grabs and displays the public ips of all running tasks so you can test them right away without having to query aws manually.
 
 ## zero-downtime infrastructure upgrades
 
-zero-downtime infrastructure upgrades are supported when changing underlying resources like cpu allocation, memory, environment variables, or task configuration. when terraform variables are updated (e.g., changing `fargate_cpu` from "256" to "512"), the infrastructure workflow applies changes via github actions. terraform creates a new task definition revision, and ecs automatically performs rolling updates: starting new tasks with updated parameters, waiting for health checks, then draining old tasks while maintaining at least one running task throughout.
+i also needed to support zero-downtime upgrades when changing infrastructure stuff like cpu, memory, environment variables, etc. when i update terraform variables (like bumping `fargate_cpu` from "256" to "512"), the infrastructure workflow applies it via github actions. terraform creates a new task definition revision, then ecs does its rolling update thing: spins up new tasks with the updated config, waits for health checks, then drains the old ones while keeping at least one task running throughout.
 
-**code change to enable this:** removed the `lifecycle { ignore_changes = [task_definition] }` block from `terraform/ecs.tf` that was previously preventing terraform from updating the service when infrastructure parameters changed. now terraform can create new task definition revisions and trigger ecs rolling deployments for infrastructure changes.
+**what i changed in the code:** i removed the `lifecycle { ignore_changes = [task_definition] }` block from `terraform/ecs.tf`. that block was preventing terraform from updating the service when infrastructure parameters changed. without it, terraform can now create new task definition revisions and trigger ecs rolling deployments whenever i change infrastructure settings.
 
-## infrastructure changes
+## how i handle infrastructure changes
 
-infrastructure updates use a safer two-step workflow to prevent accidental destructive changes and state locking conflicts.
+i set up a two-step workflow for infrastructure updates to avoid accidentally destroying things or running into state lock issues.
 
-### automatic plan on push
+**automatic plan:** when i push terraform changes to the `terraform/**` directory, github actions automatically runs `tofu plan` to show me what would change. crucially, it doesn't auto-apply anything. this gives me a chance to review before it touches the live infrastructure.
 
-when you push terraform changes to the `terraform/**` directory, github actions automatically runs `tofu plan` to validate and show what changes will be made. importantly, it does not automatically apply these changes. this gives you a chance to review the planned modifications before they affect your live infrastructure.
+**manual apply:** to actually apply changes, i go to github actions, find the infrastructure updates workflow, hit "run workflow", and select the "apply" action. this manual gate ensures i've looked at the plan and i'm ready to proceed.
 
-### manual apply via workflow dispatch
+this approach prevents me from accidentally nuking infrastructure, avoids state locking conflicts between local runs and ci/cd, and makes sure everything goes through a review step.
 
-to actually apply infrastructure changes, navigate to github actions and find the infrastructure updates workflow. click "run workflow" and select the "apply" action from the dropdown. this manual step ensures you've reviewed the plan output and are ready to proceed with the changes.
+**heads up:** if i need to run terraform locally, i make sure no github actions workflows are running to avoid state lock conflicts. if i hit a lock error, i check the dynamodb table `ecs-bg-deploy-tfstate-lock` and clean up stale locks.
 
-this two-step approach prevents accidental infrastructure destruction, avoids state locking conflicts between local and ci/cd runs, and ensures all changes go through a review step before being applied.
+## what i'd do differently in production
 
-**note:** if you need to run terraform locally, ensure no github actions workflows are running to avoid state lock conflicts. if you encounter lock errors, check the dynamodb table `ecs-bg-deploy-tfstate-lock` and remove stale locks if necessary.
+because of the aws starter account restrictions, i had to skip several things that would be mandatory in production:
 
-## production considerations
+**load balancer:** right now i'm exposing ecs tasks directly with public ips. in production, i'd absolutely use an application load balancer for proper traffic distribution, health checking, ssl/tls termination, and a stable endpoint as tasks get replaced. i'd also add service discovery through aws cloud map or route53 for service-to-service communication.
 
-due to aws starter account restrictions, several best practices were omitted that **would be mandatory in a production environment**:
+**network architecture:** because i couldn't create the load balancer, i had to put tasks in public subnets with public ips. i would never do this in production. tasks should be in private subnets with traffic routed through a load balancer in public subnets. this reduces the attack surface significantly. nat gateways would handle any outbound internet access needed.
 
-**load balancer and service discovery:** the current implementation exposes ecs tasks directly via public ips. in production, an application load balancer would be essential for proper traffic distribution, health checking, ssl/tls termination, and providing a stable endpoint as tasks are replaced during deployments. service discovery through aws cloud map or route53 would also be implemented for internal service-to-service communication.
+**security groups:** again, because of no load balancer, my security groups currently allow traffic from 0.0.0.0/0 directly to the container port. in production, only the load balancer security group should accept internet traffic, and task security groups should only allow traffic from the load balancer, not the entire internet.
 
-**network architecture:** because the load balancer restriction prevented proper alb setup, tasks had to be deployed in public subnets with directly assigned public ips. production deployments should never do this. instead, tasks should be placed in private subnets with traffic routed through a load balancer in public subnets. this reduces the attack surface and follows the principle of defense in depth. nat gateways would handle outbound internet access for private tasks.
+**deployment strategy:** while ecs rolling updates work for zero-downtime, production systems really benefit from true blue/green with codedeploy. you get instant rollback, traffic shifting controls, and canary deployments. especially important for critical apps where you need gradual rollouts and quick rollbacks.
 
-**security group hardening:** again, due to the lack of a load balancer, security groups currently allow inbound traffic from 0.0.0.0/0 directly to the container port. in production, only the load balancer security group should accept internet traffic, and task security groups should only allow traffic from the load balancer security group, not the entire internet.
+**monitoring:** production would have comprehensive cloudwatch alarms for task health, cpu/memory usage, deployment failures, and app-specific metrics. i'd add aws x-ray for distributed tracing, enhanced container insights, and integration with centralized logging.
 
-**deployment strategy:** while ecs rolling updates provide zero-downtime deployments, production systems benefit from true blue/green deployments with codedeploy for instant rollback capability, traffic shifting controls, and canary deployments. this is especially important for critical applications where gradual rollouts and quick rollbacks are essential.
-
-**monitoring and observability:** production deployments would include comprehensive cloudwatch alarms for task health, cpu/memory utilization, deployment failures, and application-specific metrics. aws x-ray for distributed tracing, enhanced container insights, and integration with centralized logging solutions would also be standard.
-
-these shortcuts were taken purely due to account service restrictions and timeline constraints. **in a production environment with a standard aws account, none of these compromises would be acceptable.**
+i only took these shortcuts because of account restrictions and the timeline. **in production with a proper aws account, i wouldn't accept any of these compromises.**
