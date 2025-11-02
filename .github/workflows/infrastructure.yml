@@ -7,6 +7,15 @@ on:
     paths:
       - 'terraform/**'
   workflow_dispatch:
+    inputs:
+      action:
+        description: 'action to perform'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+          - plan
+          - apply
 
 env:
   AWS_REGION: us-west-2
@@ -14,7 +23,7 @@ env:
 
 jobs:
   terraform:
-    name: opentofu apply
+    name: opentofu ${{ github.event.inputs.action || 'plan' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -49,6 +58,7 @@ jobs:
           tofu plan -out=tfplan
 
       - name: tofu apply
+        if: github.event.inputs.action == 'apply'
         run: |
           cd terraform
           tofu apply -auto-approve tfplan
