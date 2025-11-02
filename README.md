@@ -38,7 +38,7 @@ with both codedeploy and the load balancer blocked, i had to pivot while still m
 
 **for networking:** i replaced the load balancer with ecs tasks in public subnets that get public ips assigned directly. security groups control who can access them. this works fine for a demo, though i'd definitely use a proper load balancer in production for traffic distribution and health checking.
 
-i kept the original codedeploy configuration in `terraform/codedeploy.tf.disabled` so i can enable it once the account restrictions are lifted.
+i kept the original codedeploy configuration in `iac/codedeploy.tf.disabled` so i can enable it once the account restrictions are lifted.
 
 ## how deployments work
 
@@ -60,13 +60,13 @@ the whole thing runs through `.github/workflows/deploy.yml` which triggers on ch
 
 i also needed to support zero-downtime upgrades when changing infrastructure stuff like cpu, memory, environment variables, etc. when i update terraform variables (like bumping `fargate_cpu` from "256" to "512"), the infrastructure workflow applies it via github actions. terraform creates a new task definition revision, then ecs does its rolling update thing: spins up new tasks with the updated config, waits for health checks, then drains the old ones while keeping at least one task running throughout.
 
-**what i changed in the code:** i removed the `lifecycle { ignore_changes = [task_definition] }` block from `terraform/ecs.tf`. that block was preventing terraform from updating the service when infrastructure parameters changed. without it, terraform can now create new task definition revisions and trigger ecs rolling deployments whenever i change infrastructure settings.
+**what i changed in the code:** i removed the `lifecycle { ignore_changes = [task_definition] }` block from `iac/ecs.tf`. that block was preventing terraform from updating the service when infrastructure parameters changed. without it, terraform can now create new task definition revisions and trigger ecs rolling deployments whenever i change infrastructure settings.
 
 ## how i handle infrastructure changes
 
 i set up a two-step workflow for infrastructure updates to avoid accidentally destroying things or running into state lock issues.
 
-**automatic plan:** when i push terraform changes to the `terraform/**` directory, github actions automatically runs `tofu plan` to show me what would change. crucially, it doesn't auto-apply anything. this gives me a chance to review before it touches the live infrastructure.
+**automatic plan:** when i push infrastructure changes to the `iac/**` directory, github actions automatically runs `tofu plan` to show me what would change. crucially, it doesn't auto-apply anything. this gives me a chance to review before it touches the live infrastructure.
 
 **manual apply:** to actually apply changes, i go to github actions, find the infrastructure updates workflow, hit "run workflow", and select the "apply" action. this manual gate ensures i've looked at the plan and i'm ready to proceed.
 

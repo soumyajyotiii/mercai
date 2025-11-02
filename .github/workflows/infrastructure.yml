@@ -5,7 +5,7 @@ on:
     branches:
       - master
     paths:
-      - 'terraform/**'
+      - 'iac/**'
   workflow_dispatch:
     inputs:
       action:
@@ -44,21 +44,21 @@ jobs:
 
       - name: tofu init
         run: |
-          cd terraform
+          cd iac
           tofu init
 
       - name: tofu validate
         run: |
-          cd terraform
+          cd iac
           tofu validate
 
       - name: tofu plan
         run: |
-          cd terraform
+          cd iac
           tofu plan -out=tfplan
 
       - name: tofu apply
         if: github.event.inputs.action == 'apply'
         run: |
-          cd terraform
+          cd iac
           tofu apply -auto-approve tfplan
