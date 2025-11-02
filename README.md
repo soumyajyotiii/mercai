@@ -14,8 +14,9 @@ SubscriptionRequiredException: The AWS Access Key Id needs a subscription for th
 turns out my aws starter account needed up to 24 hours for codedeploy service activation. codedeploy is actually free for ecs deployments, but there's this account activation timing thing that blocked me from using it immediately.
 
 did some research on this:
-- https://aws.amazon.com/codedeploy/pricing/
-- https://repost.aws/knowledge-center/create-and-activate-aws-account
+- https://repost.aws/knowledge-center/error-access-service
+- https://rohanc.me/aws-subscription-required/
+- https://repost.aws/questions/QUNc-0n55qSH2rdXsRvnYbRQ
 
 ### 2. load balancer restriction
 
