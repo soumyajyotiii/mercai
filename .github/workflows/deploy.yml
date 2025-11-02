@@ -67,3 +67,45 @@ jobs:
           service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
+
+      - name: get task public ips
+        run: |
+          echo "fetching running task public ips..."
+
+          # get task arns
+          TASK_ARNS=$(aws ecs list-tasks \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service-name ${{ env.ECS_SERVICE }} \
+            --desired-status RUNNING \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskArns[]' \
+            --output text)
+
+          if [ -z "$TASK_ARNS" ]; then
+            echo "no running tasks found"
+            exit 0
+          fi
+
+          # get network interface ids
+          ENI_IDS=$(aws ecs describe-tasks \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --tasks $TASK_ARNS \
+            --region ${{ env.AWS_REGION }} \
+            --query 'tasks[].attachments[0].details[?name==`networkInterfaceId`].value' \
+            --output text)
+
+          # get public ips
+          echo ""
+          echo "==================================================="
+          echo "deployed application endpoints:"
+          echo "==================================================="
+
+          aws ec2 describe-network-interfaces \
+            --network-interface-ids $ENI_IDS \
+            --region ${{ env.AWS_REGION }} \
+            --query 'NetworkInterfaces[].[Association.PublicIp]' \
+            --output text | while read IP; do
+            echo "http://$IP:3000"
+          done
+
+          echo "==================================================="
